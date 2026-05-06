@@ -83,6 +83,10 @@ export const worker = async (event) => {
     const body = JSON.parse(record.body);
     const jobId = body.jobId;
 
+    if (jobId) {
+      throw new Error("force failure");
+    }
+
     try {
       // 1. mark as processing
       await db.send(
