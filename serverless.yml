@@ -45,6 +45,13 @@ functions:
           path: /job
           method: post
 
+  getJob:
+    handler: handler.getJob
+    events:
+      - httpApi:
+          path: /job/{id}
+          method: get
+
   worker:
     handler: handler.worker
     events:

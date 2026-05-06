@@ -1,7 +1,19 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
-import { DynamoDBDocumentClient, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  DynamoDBDocumentClient,
+  GetCommand,
+  PutCommand,
+  UpdateCommand,
+} from "@aws-sdk/lib-dynamodb";
 import { nanoid } from "nanoid";
+
+
+const QUEUE_URL = process.env.QUEUE_URL;
+const sqs = new SQSClient({ region: "ap-south-1" });
+const db = DynamoDBDocumentClient.from(
+  new DynamoDBClient({ region: "ap-south-1" }),
+);
 
 export const hello = async (event) => {
   return {
@@ -14,13 +26,6 @@ export const hello = async (event) => {
     }),
   };
 };
-
-const sqs = new SQSClient({ region: "ap-south-1" });
-const db = DynamoDBDocumentClient.from(
-  new DynamoDBClient({ region: "ap-south-1" }),
-);
-
-const QUEUE_URL = process.env.QUEUE_URL;
 
 export const createJob = async (event) => {
   try {
@@ -81,45 +86,77 @@ export const worker = async (event) => {
 
     try {
       // 1. mark as processing
-      await db.send(new UpdateCommand({
-        TableName: "jobs",
-        Key: { jobId },
-        UpdateExpression: "SET #s = :status",
-        ExpressionAttributeNames: { "#s": "status" },
-        ExpressionAttributeValues: { ":status": "processing" }
-      }));
+      await db.send(
+        new UpdateCommand({
+          TableName: "jobs",
+          Key: { jobId },
+          UpdateExpression: "SET #s = :status",
+          ExpressionAttributeNames: { "#s": "status" },
+          ExpressionAttributeValues: { ":status": "processing" },
+        }),
+      );
 
       // 2. simulate work
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 30000));
 
       // 3. mark as completed
-      await db.send(new UpdateCommand({
-        TableName: "jobs",
-        Key: { jobId },
-        UpdateExpression: "SET #s = :status, #r = :res",
-        ExpressionAttributeNames: { "#s": "status", "#r": "result" },
-        ExpressionAttributeValues: {
-          ":status": "completed",
-          ":res": "processed successfully"
-        }
-      }));
+      await db.send(
+        new UpdateCommand({
+          TableName: "jobs",
+          Key: { jobId },
+          UpdateExpression: "SET #s = :status, #r = :res",
+          ExpressionAttributeNames: { "#s": "status", "#r": "result" },
+          ExpressionAttributeValues: {
+            ":status": "completed",
+            ":res": "processed successfully",
+          },
+        }),
+      );
 
       console.log(`Job ${jobId} completed`);
-
     } catch (err) {
       console.error("Worker error:", err);
 
       // mark as failed
-      await db.send(new UpdateCommand({
-        TableName: "jobs",
-        Key: { jobId },
-        UpdateExpression: "SET #s = :status",
-        ExpressionAttributeNames: { "#s": "status" },
-        ExpressionAttributeValues: { ":status": "failed" }
-      }));
+      await db.send(
+        new UpdateCommand({
+          TableName: "jobs",
+          Key: { jobId },
+          UpdateExpression: "SET #s = :status",
+          ExpressionAttributeNames: { "#s": "status" },
+          ExpressionAttributeValues: { ":status": "failed" },
+        }),
+      );
 
       throw err; // important → triggers retry
     }
   }
+};
 
-}
+export const getJob = async (event) => {
+  try {
+    const jobId = event.pathParameters.id;
+    const job = await db.send(
+      new GetCommand({
+        TableName: "jobs",
+        Key: { jobId },
+      }),
+    );
+    return {
+      statusCode: 200,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(job),
+    };
+  } catch (err) {
+    console.error("ERROR:", err);
+    return {
+      statusCode: 500,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ error: "failed to get job" }),
+    };
+  }
+};
