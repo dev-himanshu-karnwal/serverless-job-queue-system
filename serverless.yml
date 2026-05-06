@@ -52,3 +52,8 @@ resources:
         KeySchema:
           - AttributeName: jobId
             KeyType: HASH
+
+provider:
+  environment:
+    QUEUE_URL:
+      Ref: JobQueue
