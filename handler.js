@@ -8,7 +8,6 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { nanoid } from "nanoid";
 
-
 const QUEUE_URL = process.env.QUEUE_URL;
 const sqs = new SQSClient({ region: "ap-south-1" });
 const db = DynamoDBDocumentClient.from(
@@ -142,12 +141,13 @@ export const getJob = async (event) => {
         Key: { jobId },
       }),
     );
+
     return {
       statusCode: 200,
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(job),
+      body: JSON.stringify(job.Item),
     };
   } catch (err) {
     console.error("ERROR:", err);
