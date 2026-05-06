@@ -83,24 +83,24 @@ export const worker = async (event) => {
     const body = JSON.parse(record.body);
     const jobId = body.jobId;
 
-    if (jobId) {
-      throw new Error("force failure");
-    }
-
     try {
       // 1. mark as processing
       await db.send(
         new UpdateCommand({
           TableName: "jobs",
           Key: { jobId },
-          UpdateExpression: "SET #s = :status",
+          UpdateExpression: "SET #s = :processing",
+          ConditionExpression: "#s <> :completed",
           ExpressionAttributeNames: { "#s": "status" },
-          ExpressionAttributeValues: { ":status": "processing" },
-        }),
+          ExpressionAttributeValues: {
+            ":processing": "processing",
+            ":completed": "completed"
+          },
+        })
       );
 
       // 2. simulate work
-      await new Promise((resolve) => setTimeout(resolve, 30000));
+      await new Promise((resolve) => setTimeout(resolve, 10000));
 
       // 3. mark as completed
       await db.send(
@@ -108,10 +108,12 @@ export const worker = async (event) => {
           TableName: "jobs",
           Key: { jobId },
           UpdateExpression: "SET #s = :status, #r = :res",
+          ConditionExpression: "attribute_not_exists(#s) OR #s <> :completed",
           ExpressionAttributeNames: { "#s": "status", "#r": "result" },
           ExpressionAttributeValues: {
             ":status": "completed",
             ":res": "processed successfully",
+            ":completed": "completed",
           },
         }),
       );
@@ -119,6 +121,11 @@ export const worker = async (event) => {
       console.log(`Job ${jobId} completed`);
     } catch (err) {
       console.error("Worker error:", err);
+
+      if (err.name === "ConditionalCheckFailedException") {
+        console.log("Already completed, skipping safely");
+        continue;
+      }
 
       // mark as failed
       await db.send(
