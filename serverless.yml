@@ -16,3 +16,39 @@ functions:
       - httpApi:
           path: /
           method: get
+  
+  createJob:
+    handler: handler.createJob
+    events:
+      - httpApi:
+          path: /job
+          method: post
+
+  worker:
+    handler: handler.worker
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt:
+              - JobQueue
+              - Arn
+
+
+resources:
+  Resources:
+    JobQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: job-queue
+
+    JobsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: jobs
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: jobId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: jobId
+            KeyType: HASH
