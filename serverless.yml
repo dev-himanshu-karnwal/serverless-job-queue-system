@@ -60,6 +60,7 @@ functions:
             Fn::GetAtt:
               - JobQueue
               - Arn
+    timeout: 60
 
 resources:
   Resources:
