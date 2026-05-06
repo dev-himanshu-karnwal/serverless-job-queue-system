@@ -48,7 +48,6 @@ functions:
   worker:
     handler: handler.worker
     timeout: 60
-    reservedConcurrency: 5
     events:
       - sqs:
           arn:
