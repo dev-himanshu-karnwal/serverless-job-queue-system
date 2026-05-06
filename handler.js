@@ -5,7 +5,7 @@ exports.hello = async (event) => {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      message: "Go Serverless v4! Your function executed successfully!",
+      message: "Go Serverless v1.0! Your function executed successfully!",
     }),
   };
 };
