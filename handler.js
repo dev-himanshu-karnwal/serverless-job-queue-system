@@ -1,6 +1,6 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
-import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { nanoid } from "nanoid";
 
 export const hello = async (event) => {
@@ -74,4 +74,52 @@ export const createJob = async (event) => {
 
 export const worker = async (event) => {
   console.log("EVENT:", JSON.stringify(event, null, 2));
+
+  for (const record of event.Records) {
+    const body = JSON.parse(record.body);
+    const jobId = body.jobId;
+
+    try {
+      // 1. mark as processing
+      await db.send(new UpdateCommand({
+        TableName: "jobs",
+        Key: { jobId },
+        UpdateExpression: "SET #s = :status",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: { ":status": "processing" }
+      }));
+
+      // 2. simulate work
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // 3. mark as completed
+      await db.send(new UpdateCommand({
+        TableName: "jobs",
+        Key: { jobId },
+        UpdateExpression: "SET #s = :status, result = :res",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: {
+          ":status": "completed",
+          ":res": "processed successfully"
+        }
+      }));
+
+      console.log(`Job ${jobId} completed`);
+
+    } catch (err) {
+      console.error("Worker error:", err);
+
+      // mark as failed
+      await db.send(new UpdateCommand({
+        TableName: "jobs",
+        Key: { jobId },
+        UpdateExpression: "SET #s = :status",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: { ":status": "failed" }
+      }));
+
+      throw err; // important → triggers retry
+    }
+  }
+
 }
