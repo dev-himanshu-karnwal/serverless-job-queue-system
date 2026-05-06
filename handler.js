@@ -1,9 +1,9 @@
-const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
-const { SQSClient, SendMessageCommand } = require("@aws-sdk/client-sqs");
-const { DynamoDBDocumentClient, PutCommand } = require("@aws-sdk/lib-dynamodb");
-const { nanoid } = require("nanoid");
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
+import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { nanoid } from "nanoid";
 
-exports.hello = async (event) => {
+export const hello = async (event) => {
   return {
     statusCode: 200,
     headers: {
@@ -20,7 +20,7 @@ const db = DynamoDBDocumentClient.from(new DynamoDBClient({ region: "ap-south-1"
 
 const QUEUE_URL = process.env.QUEUE_URL;
 
-exports.createJob = async (event) => {
+export const createJob = async (event) => {
   try {
     const body = JSON.parse(event.body || "{}");
 
