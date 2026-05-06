@@ -8,6 +8,9 @@ provider:
   name: aws
   runtime: nodejs20.x
   region: ap-south-1
+  environment:
+    QUEUE_URL:
+      Ref: JobQueue
 
 functions:
   hello:
@@ -33,7 +36,6 @@ functions:
               - JobQueue
               - Arn
 
-
 resources:
   Resources:
     JobQueue:
@@ -52,8 +54,3 @@ resources:
         KeySchema:
           - AttributeName: jobId
             KeyType: HASH
-
-provider:
-  environment:
-    QUEUE_URL:
-      Ref: JobQueue
