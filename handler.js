@@ -96,8 +96,8 @@ export const worker = async (event) => {
       await db.send(new UpdateCommand({
         TableName: "jobs",
         Key: { jobId },
-        UpdateExpression: "SET #s = :status, result = :res",
-        ExpressionAttributeNames: { "#s": "status" },
+        UpdateExpression: "SET #s = :status, #r = :res",
+        ExpressionAttributeNames: { "#s": "status", "#r": "result" },
         ExpressionAttributeValues: {
           ":status": "completed",
           ":res": "processed successfully"
