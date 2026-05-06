@@ -1,6 +1,4 @@
-# "org" ensures this Service is used with the correct Serverless Framework Access Key.
 org: dcttechnology
-# "service" is the name of this project. This will also be added to your AWS resource names.
 service: serverless-job-queue-system
 frameworkVersion: "3"
 
@@ -8,6 +6,12 @@ provider:
   name: aws
   runtime: nodejs20.x
   region: ap-south-1
+  stage: ${opt:stage, 'dev'}
+
+  environment:
+    QUEUE_URL:
+      Ref: JobQueue
+    STAGE: ${self:provider.stage}
 
   iam:
     role:
@@ -26,18 +30,7 @@ provider:
           Resource:
             - Fn::GetAtt: [JobQueue, Arn]
 
-  environment:
-    QUEUE_URL:
-      Ref: JobQueue
-
 functions:
-  hello:
-    handler: handler.hello
-    events:
-      - httpApi:
-          path: /
-          method: get
-  
   createJob:
     handler: handler.createJob
     events:
@@ -54,20 +47,28 @@ functions:
 
   worker:
     handler: handler.worker
+    timeout: 60
+    reservedConcurrency: 5
     events:
       - sqs:
           arn:
             Fn::GetAtt:
               - JobQueue
               - Arn
-    timeout: 60
 
 resources:
   Resources:
+
+    JobDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: job-dlq-${self:provider.stage}
+
     JobQueue:
       Type: AWS::SQS::Queue
       Properties:
-        QueueName: job-queue
+        QueueName: job-queue-${self:provider.stage}
+        VisibilityTimeout: 70
         RedrivePolicy:
           deadLetterTargetArn:
             Fn::GetAtt:
@@ -78,7 +79,7 @@ resources:
     JobsTable:
       Type: AWS::DynamoDB::Table
       Properties:
-        TableName: jobs
+        TableName: jobs-${self:provider.stage}
         BillingMode: PAY_PER_REQUEST
         AttributeDefinitions:
           - AttributeName: jobId
@@ -86,8 +87,3 @@ resources:
         KeySchema:
           - AttributeName: jobId
             KeyType: HASH
-
-    JobDLQ:
-      Type: AWS::SQS::Queue
-      Properties:
-        QueueName: job-dlq

@@ -33,16 +33,15 @@ export const createJob = async (event) => {
     const jobId = nanoid();
 
     // 1. store job
-    await db.send(
-      new PutCommand({
-        TableName: "jobs",
-        Item: {
-          jobId,
-          status: "pending",
-          createdAt: Date.now(),
-        },
-      }),
-    );
+    await db.send(new PutCommand({
+      TableName: `jobs-${process.env.STAGE || "dev"}`,
+      Item: {
+        jobId,
+        status: "pending",
+        createdAt: Date.now(),
+        retryCount: 0
+      }
+    }));
 
     // 2. push to SQS
     await sqs.send(
@@ -77,68 +76,79 @@ export const createJob = async (event) => {
 };
 
 export const worker = async (event) => {
-  console.log("EVENT:", JSON.stringify(event, null, 2));
+  console.log(JSON.stringify({ event }));
 
   for (const record of event.Records) {
     const body = JSON.parse(record.body);
     const jobId = body.jobId;
 
     try {
-      // 1. mark as processing
-      await db.send(
-        new UpdateCommand({
-          TableName: "jobs",
-          Key: { jobId },
-          UpdateExpression: "SET #s = :processing",
-          ConditionExpression: "#s <> :completed",
-          ExpressionAttributeNames: { "#s": "status" },
-          ExpressionAttributeValues: {
-            ":processing": "processing",
-            ":completed": "completed"
-          },
-        })
-      );
+      // Step 1: mark processing (idempotent)
+      await db.send(new UpdateCommand({
+        TableName: `jobs-${process.env.STAGE || "dev"}`,
+        Key: { jobId },
+        UpdateExpression: "SET #s = :processing ADD retryCount :inc",
+        ConditionExpression: "#s <> :completed",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: {
+          ":processing": "processing",
+          ":completed": "completed",
+          ":inc": 1
+        }
+      }));
 
-      // 2. simulate work
-      await new Promise((resolve) => setTimeout(resolve, 10000));
+      // Step 2: simulate work
+      await new Promise((resolve) => setTimeout(resolve, 3000));
 
-      // 3. mark as completed
-      await db.send(
-        new UpdateCommand({
-          TableName: "jobs",
-          Key: { jobId },
-          UpdateExpression: "SET #s = :status, #r = :res",
-          ConditionExpression: "attribute_not_exists(#s) OR #s <> :completed",
-          ExpressionAttributeNames: { "#s": "status", "#r": "result" },
-          ExpressionAttributeValues: {
-            ":status": "completed",
-            ":res": "processed successfully",
-            ":completed": "completed",
-          },
-        }),
-      );
+      // Step 3: mark completed
+      await db.send(new UpdateCommand({
+        TableName: `jobs-${process.env.STAGE || "dev"}`,
+        Key: { jobId },
+        UpdateExpression: "SET #s = :status, #r = :res, processedAt = :time",
+        ExpressionAttributeNames: {
+          "#s": "status",
+          "#r": "result"
+        },
+        ExpressionAttributeValues: {
+          ":status": "completed",
+          ":res": "processed successfully",
+          ":time": Date.now()
+        }
+      }));
 
-      console.log(`Job ${jobId} completed`);
+      console.log(JSON.stringify({
+        jobId,
+        status: "completed"
+      }));
+
     } catch (err) {
-      console.error("Worker error:", err);
 
       if (err.name === "ConditionalCheckFailedException") {
-        console.log("Already completed, skipping safely");
+        console.log(JSON.stringify({
+          jobId,
+          message: "Already processed"
+        }));
         continue;
       }
 
-      // mark as failed
-      await db.send(
-        new UpdateCommand({
-          TableName: "jobs",
-          Key: { jobId },
-          UpdateExpression: "SET #s = :status",
-          ExpressionAttributeNames: { "#s": "status" },
-          ExpressionAttributeValues: { ":status": "failed" },
-        }),
-      );
+      console.error(JSON.stringify({
+        jobId,
+        error: err.message
+      }));
 
-      throw err; // important → triggers retry
+      // mark failed
+      await db.send(new UpdateCommand({
+        TableName: `jobs-${process.env.STAGE || "dev"}`,
+        Key: { jobId },
+        UpdateExpression: "SET #s = :status, lastError = :err",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: {
+          ":status": "failed",
+          ":err": err.message
+        }
+      }));
+
+      throw err;
     }
   }
 };
@@ -146,12 +156,10 @@ export const worker = async (event) => {
 export const getJob = async (event) => {
   try {
     const jobId = event.pathParameters.id;
-    const job = await db.send(
-      new GetCommand({
-        TableName: "jobs",
-        Key: { jobId },
-      }),
-    );
+    const job = await db.send(new GetCommand({
+      TableName: `jobs-${process.env.STAGE || "dev"}`,
+      Key: { jobId }
+    }));
 
     return {
       statusCode: 200,
