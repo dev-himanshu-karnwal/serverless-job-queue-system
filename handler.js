@@ -16,7 +16,9 @@ export const hello = async (event) => {
 };
 
 const sqs = new SQSClient({ region: "ap-south-1" });
-const db = DynamoDBDocumentClient.from(new DynamoDBClient({ region: "ap-south-1" }));
+const db = DynamoDBDocumentClient.from(
+  new DynamoDBClient({ region: "ap-south-1" }),
+);
 
 const QUEUE_URL = process.env.QUEUE_URL;
 
@@ -51,13 +53,25 @@ export const createJob = async (event) => {
 
     return {
       statusCode: 200,
+      headers: {
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({ jobId }),
     };
   } catch (err) {
     console.error("ERROR:", err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: "failed to create job" }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        error: "failed to create job",
+      }),
     };
   }
 };
+
+export const worker = async (event) => {
+  console.log("EVENT:", JSON.stringify(event, null, 2));
+}
